@@ -1,3 +1,62 @@
+import random
+class CPU:
+    def __init__(self, board):
+        self.board = self.setup_board()
+        self.target_board = create_board()
+        self.search_mode = True
+        self.hits = []  # list of confirmed hgits not yet sunk
+        self.targets = []  # potential targets in target mode
+    def get_next_move(self):
+        if self.targets:
+            # Target mode: attack adjacent squares
+            row, col = self.targets.pop(0)
+            if self.target_board[row][col] in ("O","CX","BX","SX","PX"):
+                return self.get_next_move()  # skip already attacked
+            return row, col
+        else:
+            # Search mode: checkerboard pattern
+            candidates = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE) if (r + c) % 2 == 0 and self.target_board[r][c] == "~"]
+            if not candidates:
+                candidates = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE)if self.target_board[r][c] == "~"]
+            return random.choice(candidates)
+
+    def process_result(self, row, col, result):
+        # result is "hit" or "miss", optionally include ship type if hit
+        if result == "miss":
+            self.target_board[row][col] = "O"
+        else:
+            # hit: mark the ship type
+            self.target_board[row][col] = result + "X"
+            self.hits.append((row, col))
+            # Add adjacent squares to targets
+            for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                r, c = row+dr, col+dc
+                if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+                    if self.target_board[r][c] == "~":
+                        self.targets.append((r, c))
+    def setup_board(self):
+        board = create_board()
+        for ship_name, ship_size in SHIP_SIZES.items():
+            while True:
+                row = random.randint(0, BOARD_SIZE-1)
+                col = random.randint(0, BOARD_SIZE-1)
+                direction = random.choice(["H", "V"])
+                ship = []
+                for i in range(ship_size):
+                    r, c = (row, col+i) if direction=="H" else (row+i, col)
+                    if not (0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE):
+                        break
+                    ship.append((r, c))
+                else:
+                    if any(board[r][c] != "~" for r,c in ship):
+                        continue
+                    symbol = {"Carrier":"C", "Battleship":"B", "Submarine":"S", "Patrol Boat":"P"}[ship_name]
+                    for r, c in ship:
+                        board[r][c] = symbol
+                    break
+        return board
+        
+        
 def clear_screen():
     print("\n" * 100)
 
@@ -79,15 +138,41 @@ def all_ships_sunk(board):
                 return False
     return True
 
-def take_turn(player, target, own, opp, health):
+def take_turn(player, target, own, opp, health, cpu=None):
     print(f"{player}'s Turn")
-    print("Target Grid:")
-    print_board(target, True)
-    print("Your Board")
-    print_board(own, True)
+    # If cpu is None, this is a human player's turn: show their target grid and own board.
+    if cpu is None:
+        print("Target Grid:")
+        print_board(target, True)
+        print("Your Board")
+        print_board(own, True)
+    else:
+        # CPU is taking the turn. Don't reveal the CPU's entire board.
+        # Show the CPU's target grid (where it has attacked) and the human player's own board
+        print("Computer is taking its turn...")
+        print("CPU Target Grid:")
+        print_board(target, True)
+        print("Your Board")
+        # 'opp' is the human player's board when the CPU is acting; show it so the player
+        # can see the result of the CPU's attack, but do not show CPU ship placement.
+        print_board(opp, True)
+    
 
     while True:
-        row, col = get_coords("Enter coordinates to attack (A1, B2, etc.):")
+        if cpu:
+            row, col = cpu.get_next_move()
+            print(f"CPU attacks {chr(col+65)}{row+1}")
+        else:
+            row, col = get_coords("Enter coordinates to attack (A1, B2, etc.):")
+        # Determine the actual content on the opponent's board (ship symbol or empty)
+        cell = opp[row][col]
+        result = "miss" if cell == "~" else cell
+    
+        if target[row][col] in ("O", "BX", "CX", "PX", "SX"):
+            if not cpu:
+                print("You have already attacked here. Try again.")
+            continue
+
         if target[row][col] in ("O", "BX", "CX", "PX", "SX"):
             print("You have already attacked here. Try again.")
             continue
@@ -122,7 +207,10 @@ def take_turn(player, target, own, opp, health):
         elif opp[row][col] == "~":
             print("Miss.")
             target[row][col] = "O"
+        if cpu:
+            cpu.process_result(row, col, result)
         break
+    
     input("Press Enter to end your turn:")
     clear_screen()
 
@@ -142,28 +230,51 @@ def main():
     clear_screen()
     print("Welcome to Battleship!")
     input("Press Enter to begin setup:")
+    
+    mode = input("Single Player or Two Player? (1/2): ").strip()
 
     p1 = input("Player 1, please enter your name:")
-    p2 = input("Player 2, please enter your name:")
     p1_board = setup_player(p1)
-    p2_board = setup_player(p2)
     p1_health = [5,4,3,2]
-    p2_health = [5,4,3,2]
-    # Attack tracking boards
+    # Attack tracking board
     p1_target = create_board()
-    p2_target = create_board()
+
+
+    if (mode == "2"):
+        p2 = input("Player 2, please enter your name:")
+        p2_board = setup_player(p2)
+        p2_health = [5,4,3,2]
+        # Attack tracking board
+        p2_target = create_board()
+        cpu = None
+    else:
+        p2 = "Computer"
+        cpu = CPU(p1_board)
+        p2_board = cpu.board
+        p2_health = [5,4,3,2]
+        
+        p2_target = cpu.target_board 
 
     # Main game loop
     while True:
+        # Player 1 turn
         clear_screen()
-        input(f"{p1}, please turn the computer so that {p2} cannot see. Press Enter when you have done so:")
-        take_turn(p1, p1_target, p1_board, p2_board, p2_health)
+        if mode == "2":
+            input(f"{p1}, turn the computer so {p2} cannot see. Press Enter when ready: ")
+ 
+        take_turn(p1, p1_target, p1_board, p2_board, p2_health, cpu=None)
         if all_ships_sunk(p2_board):
             print(f"{p1} wins! All enemy ships sunk!")
             break
-        clear_screen()
-        input(f"{p2}, please turn the computer so that {p1} cannot see. Press Enter when you have done so:")
-        take_turn(p2, p2_target, p2_board, p1_board, p1_health)
+
+        # Player 2 or CPU turn
+        if mode == "2":
+            clear_screen()
+            input(f"{p2}, turn the computer so {p1} cannot see. Press Enter when ready: ")
+            take_turn(p2, p2_target, p2_board, p1_board, p1_health)
+        else:
+            take_turn(p2, p2_target, p2_board, p1_board, p1_health, cpu=cpu)
+
         if all_ships_sunk(p1_board):
             print(f"{p2} wins! All enemy ships sunk!")
             break
