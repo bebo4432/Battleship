@@ -4,36 +4,80 @@ class CPU:
         self.board = self.setup_board()
         self.target_board = create_board()
         self.search_mode = True
-        self.hits = []  # list of confirmed hgits not yet sunk
-        self.targets = []  # potential targets in target mode
+        self.ship_hits = [[],[],[],[]]  # list of confirmed hits not yet sunk
+        self.targets = [[],[],[],[]]  # potential targets in target mode
+        self.health = [5,4,3,2] #stores opponent ships health so it knows when to clear target lists (ship sunk)
+        self.spiral = spiral_in(BOARD_SIZE)
+        self.orientation = [[],[],[],[]]
     def get_next_move(self):
-        if self.targets:
-            # Target mode: attack adjacent squares
-            row, col = self.targets.pop(0)
-            if self.target_board[row][col] in ("O","CX","BX","SX","PX"):
-                return self.get_next_move()  # skip already attacked
-            return row, col
-        else:
-            # Search mode: checkerboard pattern
-            candidates = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE) if (r + c) % 2 == 0 and self.target_board[r][c] == "~"]
-            if not candidates:
-                candidates = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE)if self.target_board[r][c] == "~"]
-            return random.choice(candidates)
+        for i in range(4):
+            if self.targets[i]:
+                # Target mode: attack adjacent squares
+                row, col = self.targets[i].pop(0)
+                if self.target_board[row][col] in ("O","CX","BX","SX","PX"):
+                    return self.get_next_move()  # skip already attacked
+                return row, col
+        # Search mode: checkerboard pattern
+        candidates = [(r, c) for (r,c) in self.spiral if (r + c) % 2 == 0 and self.target_board[r][c] == "~"]
+        if not candidates:
+            candidates = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE)if self.target_board[r][c] == "~"]
+        return random.choice([candidates[0],candidates[-1]])
 
     def process_result(self, row, col, result):
-        # result is "hit" or "miss", optionally include ship type if hit
         if result == "miss":
             self.target_board[row][col] = "O"
+            return
+
+        self.target_board[row][col] = result + "X"
+
+        ship_idx = {"C":0, "B":1, "S":2, "P":3}[result]
+        self.ship_hits[ship_idx].append((row, col))
+        self.health[ship_idx] -= 1
+
+        if self.health[ship_idx] == 0:
+            # Ship sunk: clear targets and hits
+            self.targets[ship_idx].clear()
+            self.ship_hits[ship_idx].clear()
+            self.orientation[ship_idx] = None
+            return
+
+        hits = self.ship_hits[ship_idx]
+
+        # Determine orientation if we have at least 2 hits
+        if len(hits) >= 2 and not self.orientation[ship_idx]:
+            r1, c1 = hits[0]
+            r2, c2 = hits[1]
+            self.orientation[ship_idx] = "H" if r1 == r2 else "V"
+
+        # Generate new targets
+        new_targets = []
+        if self.orientation[ship_idx] == "H":
+            row = hits[0][0]
+            min_c = min(c for _, c in hits) - 1
+            max_c = max(c for _, c in hits) + 1
+            if 0 <= min_c < BOARD_SIZE and self.target_board[row][min_c] == "~":
+                new_targets.append((row, min_c))
+            if 0 <= max_c < BOARD_SIZE and self.target_board[row][max_c] == "~":
+                new_targets.append((row, max_c))
+        elif self.orientation[ship_idx] == "V":
+            col = hits[0][1]
+            min_r = min(r for r, _ in hits) - 1
+            max_r = max(r for r, _ in hits) + 1
+            if 0 <= min_r < BOARD_SIZE and self.target_board[min_r][col] == "~":
+                new_targets.append((min_r, col))
+            if 0 <= max_r < BOARD_SIZE and self.target_board[max_r][col] == "~":
+                new_targets.append((max_r, col))
         else:
-            # hit: mark the ship type
-            self.target_board[row][col] = result + "X"
-            self.hits.append((row, col))
-            # Add adjacent squares to targets
+            # Not enough hits yet, add all adjacent squares
             for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
                 r, c = row+dr, col+dc
                 if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
                     if self.target_board[r][c] == "~":
-                        self.targets.append((r, c))
+                        new_targets.append((r, c))
+
+        # Merge new targets with existing ones (avoid duplicates)
+        self.targets[ship_idx] = [t for t in new_targets if t not in self.targets[ship_idx]]
+    
     def setup_board(self):
         board = create_board()
         for ship_name, ship_size in SHIP_SIZES.items():
@@ -62,6 +106,19 @@ def clear_screen():
 
 BOARD_SIZE = 9
 SHIP_SIZES = {"Carrier": 5, "Battleship": 4, "Submarine": 3, "Patrol Boat": 2}
+
+def spiral_in(board_size):
+    coords = []
+    for layer in range((board_size + 1) // 2):
+        for c in range(layer, board_size - layer):  # top row
+            coords.append((layer, c))
+        for r in range(layer + 1, board_size - layer):  # right column
+            coords.append((r, board_size - layer - 1))
+        for c in range(board_size - layer - 2, layer - 1, -1):  # bottom row
+            coords.append((board_size - layer - 1, c))
+        for r in range(board_size - layer - 2, layer, -1):  # left column
+            coords.append((r, layer))
+    return coords
 
 def create_board():
     return [["~"] * BOARD_SIZE for _ in range(BOARD_SIZE)]
@@ -147,15 +204,8 @@ def take_turn(player, target, own, opp, health, cpu=None):
         print("Your Board")
         print_board(own, True)
     else:
-        # CPU is taking the turn. Don't reveal the CPU's entire board.
-        # Show the CPU's target grid (where it has attacked) and the human player's own board
+        # CPU is taking the turn. Don't reveal the CPU's board.
         print("Computer is taking its turn...")
-        print("CPU Target Grid:")
-        print_board(target, True)
-        print("Your Board")
-        # 'opp' is the human player's board when the CPU is acting; show it so the player
-        # can see the result of the CPU's attack, but do not show CPU ship placement.
-        print_board(opp, True)
     
 
     while True:
@@ -210,9 +260,9 @@ def take_turn(player, target, own, opp, health, cpu=None):
         if cpu:
             cpu.process_result(row, col, result)
         break
-    
-    input("Press Enter to end your turn:")
-    clear_screen()
+    if cpu:
+        input("Press Enter to end the turn:")
+        clear_screen()
 
 
 def setup_player(name):
