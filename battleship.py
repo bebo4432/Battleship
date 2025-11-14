@@ -99,6 +99,24 @@ class CPU:
                         board[r][c] = symbol
                     break
         return board
+
+
+class RandomCPU:
+    """CPU that fires fully at random (no targeting strategy)."""
+    def __init__(self):
+        self.target_board = create_board()
+
+    def get_next_move(self):
+        candidates = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE)
+                      if self.target_board[r][c] == "~"]
+        return random.choice(candidates)
+
+    def process_result(self, row, col, result):
+        if result == "miss":
+            self.target_board[row][col] = "O"
+        else:
+            # result will be a ship symbol like 'C','B','S','P'
+            self.target_board[row][col] = result + "X"
         
         
 def clear_screen():
