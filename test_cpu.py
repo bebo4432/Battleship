@@ -154,10 +154,11 @@ def main():
     print(f"\nTrained CPU: avg moves = {avg_trained:.2f}, time = {time_trained:.1f}s")
     print(f"Random CPU: avg moves = {avg_random:.2f}, time = {time_random:.1f}s")
     print(f"\nHead-to-head results ({args.games} games):")
-    print(f"  trained wins = {trained_wins}")
-    print(f"  random wins  = {random_wins}")
-    print(f"  ties         = {ties}")
-    print(f"  time         = {time_h2h:.1f}s")
+    print(f" trained wins  = {trained_wins}")
+    print(f" random wins   = {random_wins}")
+    print(f" ties          = {ties}")
+    print(f" trained win % = {trained_wins/args.games}")
+    print(f" time          = {time_h2h:.1f}s")
 
 if __name__ == "__main__":
     main()
