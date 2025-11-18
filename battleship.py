@@ -8,20 +8,42 @@ class CPU:
         self.targets = [[],[],[],[]]  # potential targets in target mode
         self.health = [5,4,3,2] #stores opponent ships health so it knows when to clear target lists (ship sunk)
         self.spiral = spiral_in(BOARD_SIZE)
+        self.spiral_idx = 0
         self.orientation = [[],[],[],[]]
+        
+        # want to randomize the spiral order a bit to avoid predictability
+        # Keep checkerboard efficiency by splitting even/odd cells, then shuffling
+        even_cells = [pos for pos in self.spiral if (pos[0] + pos[1]) % 2 == 0]
+        odd_cells  = [pos for pos in self.spiral if (pos[0] + pos[1]) % 2 == 1]
+
+        random.shuffle(even_cells)
+        random.shuffle(odd_cells)
+
+        # Maintain checkerboard priority: even first, then odd
+        self.spiral = even_cells + odd_cells
+        
     def get_next_move(self):
         for i in range(4):
             if self.targets[i]:
-                # Target mode: attack adjacent squares
-                row, col = self.targets[i].pop(0)
-                if self.target_board[row][col] in ("O","CX","BX","SX","PX"):
-                    return self.get_next_move()  # skip already attacked
-                return row, col
-        # Search mode: checkerboard pattern
-        candidates = [(r, c) for (r,c) in self.spiral if (r + c) % 2 == 0 and self.target_board[r][c] == "~"]
-        if not candidates:
-            candidates = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE)if self.target_board[r][c] == "~"]
-        return random.choice([candidates[0],candidates[-1]])
+                while self.targets[i]:
+                    row, col = self.targets[i].pop(0)
+                    if self.target_board[row][col] == "~":
+                        return row, col
+                # and if list emptied, continue to next i
+
+        # Search mode: checkerboard/spiral pattern --> moves through spiral list deterministicallygit 
+        while self.spiral_idx < len(self.spiral):
+            r, c = self.spiral[self.spiral_idx]
+            self.spiral_idx += 1
+            # checkerboard spiral pattern first
+            if ((r + c) % 2 == 0) and self.target_board[r][c] == "~":
+                return r, c
+
+        # If all checkerboard cells exhausted, shoot anywhere unshot (fallback)
+        for r in range(BOARD_SIZE):
+            for c in range(BOARD_SIZE):
+                if self.target_board[r][c] == "~":
+                    return r, c
 
     def process_result(self, row, col, result):
         if result == "miss":
@@ -69,14 +91,17 @@ class CPU:
                 new_targets.append((max_r, col))
         else:
             # Not enough hits yet, add all adjacent squares
+            hr, hc = self.ship_hits[ship_idx][-1]      # last known hit
             for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
-                r, c = row+dr, col+dc
+                r, c = hr + dr, hc + dc
                 if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
                     if self.target_board[r][c] == "~":
                         new_targets.append((r, c))
 
         # Merge new targets with existing ones (avoid duplicates)
-        self.targets[ship_idx] = [t for t in new_targets if t not in self.targets[ship_idx]]
+        for t in new_targets:
+            if t not in self.targets[ship_idx]:
+                self.targets[ship_idx].insert(0, t)   # prioritize newest
     
     def setup_board(self):
         board = create_board()
