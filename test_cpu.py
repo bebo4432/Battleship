@@ -28,7 +28,7 @@ def simulate_clear(attacker, opponent_board):
     Simulate attacker firing until all opponent ships are sunk.
     Returns number of moves used.
     """
-    board = opponent_board
+    board = clone(opponent_board)
     moves = 0
     max_moves = battleship.BOARD_SIZE ** 2 * 2
 
@@ -37,7 +37,7 @@ def simulate_clear(attacker, opponent_board):
 
         # Skip repeated attacks (should not happen normally)
         if board[r][c] in HIT_MARKS:
-            moves += 1
+            #moves += 1         dont increment moves for repeated attacks, just skip
             continue
 
         result = mark_attack(board, r, c)
