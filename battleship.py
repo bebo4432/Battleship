@@ -10,6 +10,18 @@ class CPU:
         self.spiral = spiral_in(BOARD_SIZE)
         self.spiral_idx = 0
         self.orientation = [[],[],[],[]]
+        
+        # want to randomize the spiral order a bit to avoid predictability
+        # Keep checkerboard efficiency by splitting even/odd cells, then shuffling
+        even_cells = [pos for pos in self.spiral if (pos[0] + pos[1]) % 2 == 0]
+        odd_cells  = [pos for pos in self.spiral if (pos[0] + pos[1]) % 2 == 1]
+
+        random.shuffle(even_cells)
+        random.shuffle(odd_cells)
+
+        # Maintain checkerboard priority: even first, then odd
+        self.spiral = even_cells + odd_cells
+        
     def get_next_move(self):
         for i in range(4):
             if self.targets[i]:
